@@ -7,8 +7,10 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include "EventDriven/timer.hpp"
+
 #include <iostream>
+
+#include "EventDriven/timer.hpp"
 
 using namespace std;
 
@@ -24,7 +26,6 @@ void TimeOutCall() {
 
 int main() {
   struct io_uring ring;
-  struct io_uring_cqe *cqe;
 
   uint32_t entries = 1024;
 
@@ -39,28 +40,26 @@ int main() {
   while (true) {
     EventDriven::TimerData timer_data;
     bool has_timer = timer.GetLastTimer(timer_data);
+    struct io_uring_cqe *cqe;
+    struct __kernel_timespec temp;
+    struct __kernel_timespec *ts = nullptr;
     if (has_timer) {
-      struct io_uring_sqe *timeout_sqe = io_uring_get_sqe(&ring);
-      struct __kernel_timespec ts;
-      ts.tv_sec = timer.TimeOutMs(timer_data) / 1000;
-      ts.tv_nsec = (timer.TimeOutMs(timer_data) % 1000) * 1000000;
-      io_uring_prep_timeout(timeout_sqe, &ts, 0, 0); // 100 ms timeout
-      timeout_sqe->user_data = 1; // Set user data to identify the timeout
-      // Submit both requests
-      io_uring_submit(&ring);
+      temp.tv_sec = timer.TimeOutMs(timer_data) / 1000;
+      temp.tv_nsec = (timer.TimeOutMs(timer_data) % 1000) * 1000000;
+      ts = &temp;
+    }
+    int ret = io_uring_wait_cqes(&ring, &cqe, 1024, ts, nullptr);
+    if (ret < 0) {
+      errno = -ret;
+      perror("io_uring_wait_cqes faild");
+      continue;
     }
 
-    if (io_uring_wait_cqe(&ring, &cqe) < 0) {
-      perror("io_uring_wait_cqe");
-      break;
-    }
-
-    if (cqe->user_data == 1) { // Timeout operation
-      timer.Run(timer_data);
-    }
-    // Mark the completion
-    io_uring_cqe_seen(&ring, cqe);
-
+    unsigned head;
+    unsigned count = 0;
+    io_uring_for_each_cqe(&ring, head, cqe) { count++; }
+    io_uring_cq_advance(&ring, count);
+    if (has_timer) timer.Run(timer_data);
   }
 
   io_uring_queue_exit(&ring);
