@@ -1,32 +1,25 @@
 #pragma once
 
 #include <liburing.h>
+#include "iouringconn.hpp"
 
 namespace IoURing {
 enum Event { ACCEPT = 1, READ = 2, WRITE = 3 };
 
 typedef struct Request {
-  int fd{-1};
   int event{-1};
-  uint8_t *buffer{nullptr};
-  size_t buffer_len{0};
+  Conn conn;
 } Request;
 
-inline Request *NewRequest(int fd, Event event, size_t buffer_len) {
+inline Request *NewRequest(int fd, Event event) {
   Request *request = new Request;
   request->fd = fd;
   request->event = event;
-  if (event != ACCEPT) {
-    assert(buffer_len > 0);
-    request->buffer = new uint8_t[buffer_len];
-    request->buffer_len = buffer_len;
-  }
   return request;
 }
 
 inline void DeleteRequest(Request *request) {
   if (not request) return;
-  if (request->buffer) delete[] request->buffer;
   delete request;
 }
 

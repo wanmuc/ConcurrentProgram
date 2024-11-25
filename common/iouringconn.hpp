@@ -7,9 +7,22 @@
 namespace IoURing {
 class Conn {
  public:
-  void Read() {}
+  void ReadStart() {
+
+  }
+  void ReadFinish() {
+
+  }
+
+  void WriteStart() {
+
+  }
+  void WriteFinish() {
+
+  }
 
  private:
+  int fd_;
   Packet pkt_;   // 发送应答消息的二进制数据包
   Codec codec_;  // EchoServer协议的编解码
 };

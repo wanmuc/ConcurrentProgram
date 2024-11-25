@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
         IoURing::AddAcceptEvent(&ring, request);
       } else if (request->event == IoURing::READ) {
         ret = cqe->res;
-        if (ret <= 0) {
+        if (ret <= 0) {  // 客户端关闭连接
           close(result.fd);
         } else if (ret > 0) {
           IoURing::Request write_request = IoURing::NewRequest(client_fd, IoURing::WRITE, ret);
