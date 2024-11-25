@@ -1,3 +1,5 @@
+#include <arpa/inet.h>
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <liburing.h>
@@ -5,61 +7,95 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include <iostream>
 
-#include "EventDriven/timer.hpp"
+#include "common/cmdline.h"
+#include "common/iouringctl.hpp"
+#include "common/utils.hpp"
 
 using namespace std;
+using namespace MyEcho;
 
-#define TIMEOUT_MS 100
-
-EventDriven::Timer timer;
-struct io_uring ring;
-
-void TimeOutCall() {
-  cout << "call Timeout" << endl;
-  timer.Register(1000, TimeOutCall);
+void usage() {
+  cout << "IoUringProactorSingleProcess -ip 0.0.0.0 -port 1688" << endl;
+  cout << "options:" << endl;
+  cout << "    -h,--help      print usage" << endl;
+  cout << "    -ip,--ip       listen ip" << endl;
+  cout << "    -port,--port   listen port" << endl;
+  cout << endl;
 }
 
-int main() {
-  struct io_uring ring;
-
-  uint32_t entries = 1024;
-
-  // Initialize io_uring
-  if (io_uring_queue_init(entries, &ring, 0) < 0) {
-    perror("io_uring_queue_init");
-    exit(EXIT_FAILURE);
+int main(int argc, char *argv[]) {
+  string ip;
+  int64_t port;
+  CmdLine::StrOptRequired(&ip, "ip");
+  CmdLine::Int64OptRequired(&port, "port");
+  CmdLine::SetUsage(usage);
+  CmdLine::Parse(argc, argv);
+  int sock_fd = CreateListenSocket(ip, port, false);
+  if (sock_fd < 0) {
+    return -1;
   }
 
-  timer.Register(1000, TimeOutCall);
-
+  struct io_uring ring;
+  uint32_t entries = 1024;
+  int ret = io_uring_queue_init(entries, &ring, 0);
+  if (ret < 0) {
+    errno = -ret;
+    perror("io_uring_queue_init failed");
+    return ret;
+  }
+  IoURing::Request *request = IoURing::NewRequest(sock_fd, IoURing::ACCEPT, 0);
+  IoURing::AddAcceptEvent(&ring, request);
   while (true) {
-    EventDriven::TimerData timer_data;
-    bool has_timer = timer.GetLastTimer(timer_data);
     struct io_uring_cqe *cqe;
-    struct __kernel_timespec temp;
-    struct __kernel_timespec *ts = nullptr;
-    if (has_timer) {
-      temp.tv_sec = timer.TimeOutMs(timer_data) / 1000;
-      temp.tv_nsec = (timer.TimeOutMs(timer_data) % 1000) * 1000000;
-      ts = &temp;
-    }
-    int ret = io_uring_wait_cqes(&ring, &cqe, 1024, ts, nullptr);
+    int ret = io_uring_wait_cqe(&ring, &cqe);
     if (ret < 0) {
       errno = -ret;
-      perror("io_uring_wait_cqes faild");
+      perror("io_uring_wait_cqe faild");
       continue;
     }
-
-    unsigned head;
-    unsigned count = 0;
-    io_uring_for_each_cqe(&ring, head, cqe) { count++; }
+    struct io_uring_cqe *cqes[1024];
+    int count = io_uring_peek_batch_cqe(&ring, cqes, 1024);
+    for (int i = 0; i < count; i++) {
+      cqe = cqes[i];
+      request = (IoURing::Request *)io_uring_cqe_get_data(cqe);
+      if (request->event == IoURing::ACCEPT) {
+        if (cqe->res > 0) {
+          // 新的客户端连接，发起异步读
+          int client_fd = cqe->res;
+          IoURing::Request read_request = IoURing::NewRequest(client_fd, IoURing::READ, 1024);
+          IoURing::AddReadEvent(&ring, read_request);
+        }
+        // 继续等待新的客户端连接
+        IoURing::AddAcceptEvent(&ring, request);
+      } else if (request->event == IoURing::READ) {
+        ret = cqe->res;
+        if (ret <= 0) {
+          close(result.fd);
+        } else if (ret > 0) {
+          IoURing::Request write_request = IoURing::NewRequest(client_fd, IoURing::WRITE, ret);
+          // 拷贝要写的数据
+          memcpy(write_request->buffer, request->buffer, ret);
+          IoURing::AddWriteEvent(&ring, write_request);
+        }
+        DeleteRequest(request);
+      } else if (request->event == IoURing::WRITE) {
+        ret = cqe->res;
+        if (ret < 0) {
+          close(result.fd);
+        } else {
+          if (ret <) {
+          }
+        }
+        DeleteRequest(request);
+      }
+    }
     io_uring_cq_advance(&ring, count);
-    if (has_timer) timer.Run(timer_data);
   }
 
   io_uring_queue_exit(&ring);
