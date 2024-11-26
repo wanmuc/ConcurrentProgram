@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
         // 执行到这里就是读取成功
         request->conn.ReadCallBack(ret);
         // 如果得到一个完整的请求，则写应答数据
-        if (request->OneMessage()) {
+        if (request->conn.OneMessage()) {
           request->conn.EnCode();                  // 应答数据序列化
           IoURing::AddWriteEvent(&ring, request);  // 发起异步写
         } else {
