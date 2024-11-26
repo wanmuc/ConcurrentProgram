@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
     perror("io_uring_queue_init failed");
     return ret;
   }
-  IoURing::Request *request = IoURing::NewRequest(sock_fd, IoURing::ACCEPT, 0);
+  IoURing::Request *request = IoURing::NewRequest(sock_fd, IoURing::ACCEPT);
   IoURing::AddAcceptEvent(&ring, request);
   while (true) {
     struct io_uring_cqe *cqe;
@@ -64,11 +64,15 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < count; i++) {
       cqe = cqes[i];
       request = (IoURing::Request *)io_uring_cqe_get_data(cqe);
+      auto releaseConn = [](IoURing::Request *request) {
+        close(request->conn.Fd());
+        delete request;
+      };
       if (request->event == IoURing::ACCEPT) {
         if (cqe->res > 0) {
           // 新的客户端连接，发起异步读
           int client_fd = cqe->res;
-          IoURing::Request read_request = IoURing::NewRequest(client_fd, IoURing::READ, 1024);
+          IoURing::Request read_request = IoURing::NewRequest(client_fd, IoURing::READ);
           IoURing::AddReadEvent(&ring, read_request);
         }
         // 继续等待新的客户端连接
@@ -76,23 +80,32 @@ int main(int argc, char *argv[]) {
       } else if (request->event == IoURing::READ) {
         ret = cqe->res;
         if (ret <= 0) {  // 客户端关闭连接
-          close(result.fd);
-        } else if (ret > 0) {
-          IoURing::Request write_request = IoURing::NewRequest(client_fd, IoURing::WRITE, ret);
-          // 拷贝要写的数据
-          memcpy(write_request->buffer, request->buffer, ret);
-          IoURing::AddWriteEvent(&ring, write_request);
+          releaseConn(request);
+          continue;
         }
-        DeleteRequest(request);
+        // 执行到这里就是读取成功
+        request->conn.ReadCallBack(ret);
+        // 如果得到一个完整的请求，则写应答数据
+        if (request->OneMessage()) {
+          request->conn.EnCode();                  // 应答数据序列化
+          IoURing::AddWriteEvent(&ring, request);  // 发起异步写
+        } else {
+          IoURing::AddReadEvent(&ring, request);  // 否则继续发起异步读
+        }
       } else if (request->event == IoURing::WRITE) {
         ret = cqe->res;
         if (ret < 0) {
-          close(result.fd);
-        } else {
-          if (ret <) {
-          }
+          releaseConn(request);
+          continue;
         }
-        DeleteRequest(request);
+        // 执行到这里就是写成功
+        request->conn.WriteCallBack(ret);
+        if (request->conn.FinishWrite()) {
+          request->conn.Reset();                  // 连接重置
+          IoURing::AddReadEvent(&ring, request);  // 重新发起异步读，处理新的请求
+        } else {
+          IoURing::AddWriteEvent(&ring, request);  // 否则继续发起异步写
+        }
       }
     }
     io_uring_cq_advance(&ring, count);
