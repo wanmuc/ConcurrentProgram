@@ -23,6 +23,8 @@ class Conn {
     return get_one;
   }
 
+  void EnCode() { codec_.EnCode(message_, pkt_); }
+
   uint8_t* WriteData() { return pkt_.Data() + send_len_; }
   size_t WriteLen() { return pkt_.UseLen() - send_len_; }
   void WriteCallBack(size_t send_len) { send_len_ += send_len; }
@@ -39,7 +41,7 @@ class Conn {
   int fd_;
   size_t send_len_{0};   // 要发送的应答数据的长度
   std::string message_;  // 对于EchoServer来说，即是获取的请求消息，也是要发送的应答消息
-  Packet pkt_;           // 发送应答消息的二进制数据包
-  Codec codec_;          // EchoServer协议的编解码
+  MyEcho::Packet pkt_;   // 发送应答消息的二进制数据包
+  MyEcho::Codec codec_;  // EchoServer协议的编解码
 };
 }  // namespace IoURing

@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
         if (cqe->res > 0) {
           // 新的客户端连接，发起异步读
           int client_fd = cqe->res;
-          IoURing::Request read_request = IoURing::NewRequest(client_fd, IoURing::READ);
+          IoURing::Request *read_request = IoURing::NewRequest(client_fd, IoURing::READ);
           IoURing::AddReadEvent(&ring, read_request);
         }
         // 继续等待新的客户端连接
