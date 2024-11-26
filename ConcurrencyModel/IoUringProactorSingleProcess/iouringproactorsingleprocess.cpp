@@ -49,8 +49,8 @@ int main(int argc, char *argv[]) {
     perror("io_uring_queue_init failed");
     return ret;
   }
-  IoURing::Request *request = IoURing::NewRequest(sock_fd, IoURing::ACCEPT);
-  IoURing::AddAcceptEvent(&ring, request);
+  IoURing::Request *conn_request = IoURing::NewRequest(sock_fd, IoURing::ACCEPT);
+  IoURing::AddAcceptEvent(&ring, conn_request);
   while (true) {
     struct io_uring_cqe *cqe;
     int ret = io_uring_wait_cqe(&ring, &cqe);
@@ -63,8 +63,9 @@ int main(int argc, char *argv[]) {
     int count = io_uring_peek_batch_cqe(&ring, cqes, 1024);
     for (int i = 0; i < count; i++) {
       cqe = cqes[i];
-      request = (IoURing::Request *)io_uring_cqe_get_data(cqe);
+      IoURing::Request *request = (IoURing::Request *)io_uring_cqe_get_data(cqe);
       auto releaseConn = [](IoURing::Request *request) {
+        cout << "close client connection fd = " << request->conn.Fd() << endl;
         close(request->conn.Fd());
         delete request;
       };
@@ -110,7 +111,7 @@ int main(int argc, char *argv[]) {
     }
     io_uring_cq_advance(&ring, count);
   }
-
   io_uring_queue_exit(&ring);
+  delete conn_request;
   return 0;
 }
