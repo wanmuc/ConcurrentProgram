@@ -27,7 +27,7 @@ void usage() {
   cout << "    -h,--help      print usage" << endl;
   cout << "    -ip,--ip       listen ip" << endl;
   cout << "    -port,--port   listen port" << endl;
-  cout << "    -io_uring_flag,--io_uring_flag   1 is defualt, 2 is SQPOLL, 3 is IOPOLL" << endl;
+  cout << "    -io_uring_flag,--io_uring_flag   1 is defualt, 2 is SQPOLL" << endl;
   cout << endl;
 }
 
@@ -101,8 +101,6 @@ int main(int argc, char *argv[]) {
 
   unsigned flag = 0;
   if (io_uring_flag == 2) {
-    flag = IORING_SETUP_IOPOLL;
-  } else if (io_uring_flag == 3) {
     flag = IORING_SETUP_SQPOLL;
   }
   struct io_uring ring;
