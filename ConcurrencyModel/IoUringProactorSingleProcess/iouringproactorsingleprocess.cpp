@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include <iostream>
+#include <functional>
 
 #include "common/cmdline.h"
 #include "common/iouringctl.hpp"
@@ -27,6 +28,62 @@ void usage() {
   cout << "    -ip,--ip       listen ip" << endl;
   cout << "    -port,--port   listen port" << endl;
   cout << endl;
+}
+
+void ReleaseConn(IoURing::Request *request) {
+  cout << "close client connection fd = " << request->conn.Fd() << endl;
+  close(request->conn.Fd());
+  delete request;
+}
+
+void OnAcceptEvent(struct io_uring &ring, IoURing::Request *request,
+                   struct io_uring_cqe *cqe) {
+  if (cqe->res > 0) {
+    // 新的客户端连接，发起异步读
+    int client_fd = cqe->res;
+    IoURing::Request *read_request =
+        IoURing::NewRequest(client_fd, IoURing::READ);
+    IoURing::AddReadEvent(&ring, read_request);
+  }
+  // 继续等待新的客户端连接
+  IoURing::AddAcceptEvent(&ring, request);
+}
+
+void OnReadEvent(struct io_uring &ring, IoURing::Request *request,
+                 struct io_uring_cqe *cqe,
+                 function<void(IoURing::Request *)> releaseConn) {
+  int32_t ret = cqe->res;
+  if (ret <= 0) { // 客户端关闭连接或者读失败
+    ReleaseConn(request);
+    return;
+  }
+  // 执行到这里就是读取成功
+  request->conn.ReadCallBack(ret);
+  // 如果得到一个完整的请求，则写应答数据
+  if (request->conn.OneMessage()) {
+    request->conn.EnCode();                 // 应答数据序列化
+    IoURing::AddWriteEvent(&ring, request); // 发起异步写
+  } else {
+    IoURing::AddReadEvent(&ring, request); // 否则继续发起异步读
+  }
+}
+
+void OnWriteEvent(struct io_uring &ring, IoURing::Request *request,
+                 struct io_uring_cqe *cqe,
+                 function<void(IoURing::Request *)> releaseConn) {
+  int32_t ret = cqe->res;
+  if (ret < 0) {  // 写失败
+    ReleaseConn(request);
+    return;
+  }
+  // 执行到这里就是写成功
+  request->conn.WriteCallBack(ret);
+  if (request->conn.FinishWrite()) {
+    request->conn.Reset();                 // 连接重置
+    IoURing::AddReadEvent(&ring, request); // 重新发起异步读，处理新的请求
+  } else {
+    IoURing::AddWriteEvent(&ring, request); // 否则继续发起异步写
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -64,49 +121,12 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < count; i++) {
       cqe = cqes[i];
       IoURing::Request *request = (IoURing::Request *)io_uring_cqe_get_data(cqe);
-      auto releaseConn = [](IoURing::Request *request) {
-        cout << "close client connection fd = " << request->conn.Fd() << endl;
-        close(request->conn.Fd());
-        delete request;
-      };
       if (request->event == IoURing::ACCEPT) {
-        if (cqe->res > 0) {
-          // 新的客户端连接，发起异步读
-          int client_fd = cqe->res;
-          IoURing::Request *read_request = IoURing::NewRequest(client_fd, IoURing::READ);
-          IoURing::AddReadEvent(&ring, read_request);
-        }
-        // 继续等待新的客户端连接
-        IoURing::AddAcceptEvent(&ring, request);
+        OnAcceptEvent(ring, request, cqe);
       } else if (request->event == IoURing::READ) {
-        ret = cqe->res;
-        if (ret <= 0) {  // 客户端关闭连接
-          releaseConn(request);
-          continue;
-        }
-        // 执行到这里就是读取成功
-        request->conn.ReadCallBack(ret);
-        // 如果得到一个完整的请求，则写应答数据
-        if (request->conn.OneMessage()) {
-          request->conn.EnCode();                  // 应答数据序列化
-          IoURing::AddWriteEvent(&ring, request);  // 发起异步写
-        } else {
-          IoURing::AddReadEvent(&ring, request);  // 否则继续发起异步读
-        }
+        OnReadEvent(ring, request, cqe);
       } else if (request->event == IoURing::WRITE) {
-        ret = cqe->res;
-        if (ret < 0) {
-          releaseConn(request);
-          continue;
-        }
-        // 执行到这里就是写成功
-        request->conn.WriteCallBack(ret);
-        if (request->conn.FinishWrite()) {
-          request->conn.Reset();                  // 连接重置
-          IoURing::AddReadEvent(&ring, request);  // 重新发起异步读，处理新的请求
-        } else {
-          IoURing::AddWriteEvent(&ring, request);  // 否则继续发起异步写
-        }
+        OnWriteEvent(ring, request, cqe);
       }
     }
     io_uring_cq_advance(&ring, count);
