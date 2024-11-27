@@ -50,8 +50,7 @@ void OnAcceptEvent(struct io_uring &ring, IoURing::Request *request,
 }
 
 void OnReadEvent(struct io_uring &ring, IoURing::Request *request,
-                 struct io_uring_cqe *cqe,
-                 function<void(IoURing::Request *)> releaseConn) {
+                 struct io_uring_cqe *cqe) {
   int32_t ret = cqe->res;
   if (ret <= 0) { // 客户端关闭连接或者读失败
     ReleaseConn(request);
@@ -69,8 +68,7 @@ void OnReadEvent(struct io_uring &ring, IoURing::Request *request,
 }
 
 void OnWriteEvent(struct io_uring &ring, IoURing::Request *request,
-                 struct io_uring_cqe *cqe,
-                 function<void(IoURing::Request *)> releaseConn) {
+                  struct io_uring_cqe *cqe) {
   int32_t ret = cqe->res;
   if (ret < 0) {  // 写失败
     ReleaseConn(request);
