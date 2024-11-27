@@ -22,11 +22,12 @@ using namespace std;
 using namespace MyEcho;
 
 void usage() {
-  cout << "IoUringProactorSingleProcess -ip 0.0.0.0 -port 1688" << endl;
+  cout << "IoUringProactorSingleProcess -ip 0.0.0.0 -port 1688 -io_uring_flag 1" << endl;
   cout << "options:" << endl;
   cout << "    -h,--help      print usage" << endl;
   cout << "    -ip,--ip       listen ip" << endl;
   cout << "    -port,--port   listen port" << endl;
+  cout << "    -io_uring_flag,--io_uring_flag   1 is defualt, 2 is SQPOLL, 3 is IOPOLL" << endl;
   cout << endl;
 }
 
@@ -87,8 +88,10 @@ void OnWriteEvent(struct io_uring &ring, IoURing::Request *request,
 int main(int argc, char *argv[]) {
   string ip;
   int64_t port;
+  int64_t io_uring_flag;
   CmdLine::StrOptRequired(&ip, "ip");
   CmdLine::Int64OptRequired(&port, "port");
+  CmdLine::Int64OptRequired(&io_uring_flag, "io_uring_flag");
   CmdLine::SetUsage(usage);
   CmdLine::Parse(argc, argv);
   int sock_fd = CreateListenSocket(ip, port, false);
@@ -96,9 +99,15 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
+  unsigned flag = 0;
+  if (io_uring_flag == 2) {
+    flag = IORING_SETUP_IOPOLL;
+  } else if (io_uring_flag == 3) {
+    flag = IORING_SETUP_SQPOLL;
+  }
   struct io_uring ring;
   uint32_t entries = 1024;
-  int ret = io_uring_queue_init(entries, &ring, 0);
+  int ret = io_uring_queue_init(entries, &ring, flag);
   if (ret < 0) {
     errno = -ret;
     perror("io_uring_queue_init failed");
