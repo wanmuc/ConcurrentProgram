@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
               IoURing::NewRequest(client_fd, IoURing::READ);
           // 新的客户端连接，则创建协程
           client_request->cid = schedule.CoroutineCreate(
-              HandlerClient, schedule, ring, client_request);
+              HandlerClient, ref(schedule), ref(ring), client_request);
           schedule.CoroutineResume(client_request->cid);
         }
         // 继续等待新的客户端连接
