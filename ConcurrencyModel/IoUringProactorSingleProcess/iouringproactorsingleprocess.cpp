@@ -1,14 +1,10 @@
-#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <liburing.h>
-#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
 #include <unistd.h>
 
 #include <iostream>
@@ -32,7 +28,8 @@ void usage() {
 }
 
 void ReleaseConn(IoURing::Request *request) {
-  cout << "close client connection fd = " << request->conn.Fd() << endl;
+  errno = request->cqe_res;
+  perror("ReleaseConn");
   close(request->conn.Fd());
   IoURing::DeleteRequest(request);
 }
