@@ -10,9 +10,9 @@
 
 #include <iostream>
 
-#include "../../common/cmdline.h"
-#include "../../Coroutine/mycoroutine.h"
-#include "../../common/epollctl.hpp"
+#include "common/cmdline.h"
+#include "Coroutine/mycoroutine.h"
+#include "common/epollctl.hpp"
 
 using namespace std;
 using namespace MyEcho;

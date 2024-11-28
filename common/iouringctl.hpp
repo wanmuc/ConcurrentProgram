@@ -8,8 +8,9 @@ namespace IoURing {
 enum Event { ACCEPT = 1, READ = 2, WRITE = 3 };
 
 typedef struct Request {
-  int event{-1};
-  Conn conn;
+  int event{-1}; // 事件类型
+  Conn conn;     // 客户端连接封装
+  int cid{-1};   // 在协程模式下，是关联的从协程id
 } Request;
 
 inline Request *NewRequest(int fd, Event event) {
