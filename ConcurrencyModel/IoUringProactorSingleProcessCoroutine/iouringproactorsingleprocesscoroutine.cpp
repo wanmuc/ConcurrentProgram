@@ -34,7 +34,7 @@ void usage() {
 void ReleaseConn(IoURing::Request *request) {
   cout << "close client connection fd = " << request->conn.Fd() << endl;
   close(request->conn.Fd());
-  IoURing::DeleteRequest(conn_request);
+  IoURing::DeleteRequest(request);
 }
 
 void HandlerClient(MyCoroutine::Schedule& schedule,  IoURing::Request *request) {
