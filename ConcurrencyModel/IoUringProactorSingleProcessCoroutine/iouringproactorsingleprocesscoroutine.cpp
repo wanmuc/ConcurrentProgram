@@ -53,6 +53,7 @@ void HandlerClient(MyCoroutine::Schedule& schedule, struct io_uring& ring, IoURi
     request->conn.EnCode(); // 应答数据序列化
     while (not request->conn.FinishWrite()) {
       IoURing::AddWriteEvent(&ring, request); // 发起异步写
+      schedule.CoroutineYield();  // 让出cpu，切换到主协程，等待写结果回调，唤醒
       if (request->cqe_res < 0) { // 写失败
         ReleaseConn(request);
         return;
