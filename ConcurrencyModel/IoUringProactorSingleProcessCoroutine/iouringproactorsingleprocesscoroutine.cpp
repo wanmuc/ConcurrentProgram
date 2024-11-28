@@ -37,7 +37,7 @@ void ReleaseConn(IoURing::Request *request) {
   IoURing::DeleteRequest(request);
 }
 
-void HandlerClient(MyCoroutine::Schedule& schedule,  IoURing::Request *request) {
+void HandlerClient(MyCoroutine::Schedule& schedule, struct io_uring& ring, IoURing::Request *request) {
   while (true) {
     ssize_t ret = 0;
     while (not request->conn.OneMessage()) {
@@ -107,7 +107,8 @@ int main(int argc, char *argv[]) {
           IoURing::Request *client_request =
               IoURing::NewRequest(client_fd, IoURing::READ);
           // 新的客户端连接，则创建协程
-          client_request->cid = schedule.CoroutineCreate(HandlerClient, schedule, client_request);
+          client_request->cid = schedule.CoroutineCreate(
+              HandlerClient, schedule, ring, client_request);
           schedule.CoroutineResume(client_request->cid);
         }
         // 继续等待新的客户端连接
