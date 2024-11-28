@@ -34,7 +34,7 @@ void usage() {
 void ReleaseConn(IoURing::Request *request) {
   cout << "close client connection fd = " << request->conn.Fd() << endl;
   close(request->conn.Fd());
-  delete request;
+  IoURing::DeleteRequest(conn_request);
 }
 
 void OnAcceptEvent(struct io_uring &ring, IoURing::Request *request,
@@ -42,9 +42,9 @@ void OnAcceptEvent(struct io_uring &ring, IoURing::Request *request,
   if (cqe->res > 0) {
     // 新的客户端连接，发起异步读
     int client_fd = cqe->res;
-    IoURing::Request *read_request =
+    IoURing::Request *client_request =
         IoURing::NewRequest(client_fd, IoURing::READ);
-    IoURing::AddReadEvent(&ring, read_request);
+    IoURing::AddReadEvent(&ring, client_request);
   }
   // 继续等待新的客户端连接
   IoURing::AddAcceptEvent(&ring, request);
@@ -137,6 +137,6 @@ int main(int argc, char *argv[]) {
     io_uring_cq_advance(&ring, count);
   }
   io_uring_queue_exit(&ring);
-  delete conn_request;
+  IoURing::DeleteRequest(conn_request);
   return 0;
 }

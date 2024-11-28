@@ -8,9 +8,10 @@ namespace IoURing {
 enum Event { ACCEPT = 1, READ = 2, WRITE = 3 };
 
 typedef struct Request {
-  int event{-1}; // 事件类型
-  Conn conn;     // 客户端连接封装
-  int cid{-1};   // 在协程模式下，是关联的从协程id
+  int event{-1};       // 事件类型
+  Conn conn;           // 客户端连接封装
+  int cid{-1};         // 在协程模式下，是关联的从协程id
+  int32_t cqe_res{-1}; // io_uring完成队列对象返回值
 } Request;
 
 inline Request *NewRequest(int fd, Event event) {
