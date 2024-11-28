@@ -39,7 +39,6 @@ void ReleaseConn(IoURing::Request *request) {
 
 void HandlerClient(MyCoroutine::Schedule& schedule, struct io_uring& ring, IoURing::Request *request) {
   while (true) {
-    ssize_t ret = 0;
     while (not request->conn.OneMessage()) {
       IoURing::AddReadEvent(&ring, request); // 发起异步读
       schedule.CoroutineYield();  // 让出cpu，切换到主协程，等待读结果回调，唤醒
