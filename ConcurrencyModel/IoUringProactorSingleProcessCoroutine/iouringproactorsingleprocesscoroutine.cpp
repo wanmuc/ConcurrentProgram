@@ -38,7 +38,7 @@ void ReleaseConn(IoURing::Request *request) {
 }
 
 void HandlerClient(MyCoroutine::Schedule& schedule,  IoURing::Request *request) {
-  whlie (true) {
+  while (true) {
     ssize_t ret = 0;
     while (not request->conn.OneMessage()) {
       IoURing::AddReadEvent(&ring, request); // 发起异步读
