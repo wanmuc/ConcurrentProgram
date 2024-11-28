@@ -48,7 +48,7 @@ void HandlerClient(MyCoroutine::Schedule& schedule, struct io_uring& ring, IoURi
         return;
       }
       // 执行到这里就是读取成功
-      request->conn.ReadCallBack(ret);
+      request->conn.ReadCallBack(request->cqe_res);
     }
     // 执行到这里说明已经读取到一个完整的请求
     request->conn.EnCode(); // 应答数据序列化
@@ -59,7 +59,7 @@ void HandlerClient(MyCoroutine::Schedule& schedule, struct io_uring& ring, IoURi
         return;
       }
       // 执行到这里就是写成功
-      request->conn.WriteCallBack(ret);
+      request->conn.WriteCallBack(request->cqe_res);
     }
     request->conn.Reset(); // 连接重置
   }
