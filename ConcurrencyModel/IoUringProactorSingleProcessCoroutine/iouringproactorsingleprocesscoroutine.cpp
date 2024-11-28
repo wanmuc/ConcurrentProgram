@@ -7,13 +7,13 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <iostream>
 #include <functional>
+#include <iostream>
 
+#include "Coroutine/mycoroutine.h"
 #include "common/cmdline.h"
 #include "common/iouringctl.hpp"
 #include "common/utils.hpp"
-#include "Coroutine/mycoroutine.h"
 
 using namespace std;
 using namespace MyEcho;
@@ -28,18 +28,16 @@ void usage() {
 }
 
 void ReleaseConn(IoURing::Request *request) {
-  errno = request->cqe_res;
-  perror("ReleaseConn");
   close(request->conn.Fd());
   IoURing::DeleteRequest(request);
 }
 
-void HandlerClient(MyCoroutine::Schedule& schedule, struct io_uring& ring, IoURing::Request *request) {
+void HandlerClient(MyCoroutine::Schedule &schedule, struct io_uring &ring, IoURing::Request *request) {
   while (true) {
     while (not request->conn.OneMessage()) {
-      IoURing::AddReadEvent(&ring, request); // 发起异步读
-      schedule.CoroutineYield();  // 让出cpu，切换到主协程，等待读结果回调，唤醒
-      if (request->cqe_res <= 0) { // 客户端关闭连接或者读失败
+      IoURing::AddReadEvent(&ring, request);  // 发起异步读
+      schedule.CoroutineYield();              // 让出cpu，切换到主协程，等待读结果回调，唤醒
+      if (request->cqe_res <= 0) {            // 客户端关闭连接或者读失败
         ReleaseConn(request);
         return;
       }
@@ -47,18 +45,18 @@ void HandlerClient(MyCoroutine::Schedule& schedule, struct io_uring& ring, IoURi
       request->conn.ReadCallBack(request->cqe_res);
     }
     // 执行到这里说明已经读取到一个完整的请求
-    request->conn.EnCode(); // 应答数据序列化
+    request->conn.EnCode();  // 应答数据序列化
     while (not request->conn.FinishWrite()) {
-      IoURing::AddWriteEvent(&ring, request); // 发起异步写
-      schedule.CoroutineYield();  // 让出cpu，切换到主协程，等待写结果回调，唤醒
-      if (request->cqe_res < 0) { // 写失败
+      IoURing::AddWriteEvent(&ring, request);  // 发起异步写
+      schedule.CoroutineYield();               // 让出cpu，切换到主协程，等待写结果回调，唤醒
+      if (request->cqe_res < 0) {              // 写失败
         ReleaseConn(request);
         return;
       }
       // 执行到这里就是写成功
       request->conn.WriteCallBack(request->cqe_res);
     }
-    request->conn.Reset(); // 连接重置
+    request->conn.Reset();  // 连接重置
   }
 }
 
@@ -101,11 +99,9 @@ int main(int argc, char *argv[]) {
       if (request->event == IoURing::ACCEPT) {
         if (cqe->res > 0) {
           int client_fd = cqe->res;
-          IoURing::Request *client_request =
-              IoURing::NewRequest(client_fd, IoURing::READ);
+          IoURing::Request *client_request = IoURing::NewRequest(client_fd, IoURing::READ);
           // 新的客户端连接，则创建协程
-          client_request->cid = schedule.CoroutineCreate(
-              HandlerClient, ref(schedule), ref(ring), client_request);
+          client_request->cid = schedule.CoroutineCreate(HandlerClient, ref(schedule), ref(ring), client_request);
           schedule.CoroutineResume(client_request->cid);
         }
         // 继续等待新的客户端连接
