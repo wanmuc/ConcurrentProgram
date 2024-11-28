@@ -92,7 +92,6 @@ void HandlerClient(MyCoroutine::Schedule& schedule,  IoURing::Request *request) 
 int main(int argc, char *argv[]) {
   string ip;
   int64_t port;
-  int64_t io_uring_flag;
   CmdLine::StrOptRequired(&ip, "ip");
   CmdLine::Int64OptRequired(&port, "port");
   CmdLine::SetUsage(usage);
