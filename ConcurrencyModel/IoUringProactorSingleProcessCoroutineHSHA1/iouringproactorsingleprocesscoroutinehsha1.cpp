@@ -10,6 +10,7 @@
 #include <functional>
 #include <iostream>
 
+#include "Coroutine/channel.h"
 #include "Coroutine/mycoroutine.h"
 #include "common/cmdline.h"
 #include "common/iouringctl.hpp"
