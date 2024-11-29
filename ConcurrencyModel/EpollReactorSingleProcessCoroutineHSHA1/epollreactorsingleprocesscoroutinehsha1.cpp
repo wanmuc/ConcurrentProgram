@@ -10,16 +10,16 @@
 
 #include <iostream>
 
+#include "../../Coroutine/channel.h"
+#include "../../Coroutine/mycoroutine.h"
 #include "../../common/cmdline.h"
 #include "../../common/epollctl.hpp"
-#include "../../Coroutine/mycoroutine.h"
-#include "../../Coroutine/channel.h"
 
 using namespace std;
 using namespace MyEcho;
 
 struct EventData {
-  EventData(int fd, int epoll_fd) : fd_(fd), epoll_fd_(epoll_fd){};
+  EventData(int fd, int epoll_fd) : fd_(fd), epoll_fd_(epoll_fd) {};
   int fd_{0};
   int epoll_fd_{0};
   int cid_{MyCoroutine::kInvalidCid};
@@ -29,13 +29,14 @@ struct EventData {
 void EchoDeal(const std::string req_message, std::string &resp_message) { resp_message = req_message; }
 
 void Producer(MyCoroutine::Channel<EventData> &channel, EventData *event_data) {
-  ClearEvent(event_data->epoll_fd_, event_data->fd_, false); 
+  ClearEvent(event_data->epoll_fd_, event_data->fd_, false);
   channel.Send(event_data);
 }
 
 void Consumer(MyCoroutine::Schedule &schedule, MyCoroutine::Channel<EventData> &channel) {
-  EventData * event_data = channel.Receive();
-  event_data->cid_ = schedule.CurrentCid();  // 注意，这里需要更新cid_，之前的cid_是Producer协程的id，需要更新成Consumer的协程id
+  EventData *event_data = channel.Receive();
+  event_data->cid_ =
+      schedule.CurrentCid();  // 注意，这里需要更新cid_，之前的cid_是Producer协程的id，需要更新成Consumer的协程id
   auto releaseConn = [&event_data]() {
     ClearEvent(event_data->epoll_fd_, event_data->fd_);
     delete event_data;  // 释放内存
@@ -123,7 +124,7 @@ int main(int argc, char *argv[]) {
   EventData event_data(sock_fd, epoll_fd);
   SetNotBlock(sock_fd);
   AddReadEvent(epoll_fd, sock_fd, &event_data);
-  MyCoroutine::Schedule schedule(5000);  // 协程池初始化
+  MyCoroutine::Schedule schedule(5000);                     // 协程池初始化
   MyCoroutine::Channel<EventData> channel(schedule, 3000);  // channel初始化，分配3000的缓存
   for (int i = 0; i < 3000; i++) {
     int cid = schedule.CoroutineCreate(Consumer, std::ref(schedule), std::ref(channel));
@@ -154,8 +155,7 @@ int main(int argc, char *argv[]) {
       }
       if (event_data->cid_ == MyCoroutine::kInvalidCid) {  // 第一次事件，则创建协程
         event_data->schedule_ = &schedule;
-        event_data->cid_ = schedule.CoroutineCreate(Producer, std::ref(channel),
-                                                    event_data); // 创建协程
+        event_data->cid_ = schedule.CoroutineCreate(Producer, std::ref(channel), event_data);  // 创建协程
         schedule.CoroutineResume(event_data->cid_);
       } else {
         schedule.CoroutineResume(event_data->cid_);  // 唤醒之前主动让出cpu的协程
