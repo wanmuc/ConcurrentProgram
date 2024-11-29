@@ -28,6 +28,8 @@ void usage() {
 }
 
 void ReleaseConn(IoURing::Request *request) {
+  errno = -request->cqe_res;  // io_uring返回的cqe中真正错误码的值，需要再取反。
+  perror("close client");
   close(request->conn.Fd());
   IoURing::DeleteRequest(request);
 }
