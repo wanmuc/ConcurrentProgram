@@ -10,10 +10,10 @@
 
 #include <iostream>
 
-#include "../../Coroutine/conditionvariable.h"
-#include "../../Coroutine/mycoroutine.h"
-#include "../../common/cmdline.h"
-#include "../../common/epollctl.hpp"
+#include "Coroutine/conditionvariable.h"
+#include "Coroutine/mycoroutine.h"
+#include "common/cmdline.h"
+#include "common/epollctl.hpp"
 
 using namespace std;
 using namespace MyEcho;

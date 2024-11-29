@@ -10,8 +10,8 @@
 
 #include <iostream>
 
-#include "../../common/cmdline.h"
-#include "../../common/epollctl.hpp"
+#include "common/cmdline.h"
+#include "common/epollctl.hpp"
 
 using namespace std;
 using namespace MyEcho;
@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
         delete conn;
       };
       if (events[i].events & EPOLLIN) {  // 可读
-        if (not conn->Read()) {  // 执行读失败
+        if (not conn->Read()) {          // 执行读失败
           releaseConn();
           continue;
         }
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
         }
       }
       if (events[i].events & EPOLLOUT) {  // 可写
-        if (not conn->Write()) {  // 执行写失败
+        if (not conn->Write()) {          // 执行写失败
           releaseConn();
           continue;
         }
