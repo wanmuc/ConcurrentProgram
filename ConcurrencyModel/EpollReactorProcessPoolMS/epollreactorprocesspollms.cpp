@@ -12,20 +12,14 @@
 #include <iostream>
 #include <vector>
 
-#include "../../common/cmdline.h"
-#include "../../common/conn.hpp"
-#include "../../common/epollctl.hpp"
+#include "common/cmdline.h"
+#include "common/conn.hpp"
+#include "common/epollctl.hpp"
 
 using namespace std;
 using namespace MyEcho;
 
-void mainReactor(string ip, int64_t port, bool is_main_read, int64_t sub_reactor_count) {
-  vector<int> client_unix_sockets;
-  for (int i = 0; i < sub_reactor_count; i++) {
-    int fd = CreateClientUnixSocket("./unix.sock." + to_string(i));
-    assert(fd > 0);
-    client_unix_sockets.push_back(fd);
-  }
+void mainReactor(string ip, int64_t port, bool is_main_read, vector<int> &send_fd_unix_sockets) {
   int index = 0;
   int sock_fd = CreateListenSocket(ip, port, true);
   assert(sock_fd > 0);
@@ -35,10 +29,10 @@ void mainReactor(string ip, int64_t port, bool is_main_read, int64_t sub_reactor
   Conn conn(sock_fd, epoll_fd, true);
   SetNotBlock(sock_fd);
   AddReadEvent(&conn);
-  auto getClientUnixSocketFd = [&index, &client_unix_sockets, sub_reactor_count]() {
+  auto getClientUnixSocketFd = [&index, &send_fd_unix_sockets]() {
     index++;
-    index %= sub_reactor_count;
-    return client_unix_sockets[index];
+    index %= send_fd_unix_sockets.size();
+    return send_fd_unix_sockets[index];
   };
   while (true) {
     int num = epoll_wait(epoll_fd, events, 2048, -1);
@@ -70,15 +64,15 @@ void mainReactor(string ip, int64_t port, bool is_main_read, int64_t sub_reactor
   }
 }
 
-void subReactor(int server_unix_socket, int64_t sub_reactor_count) {
+void subReactor(int read_fd_unix_socket, int64_t sub_reactor_count) {
   epoll_event events[2048];
   int epoll_fd = epoll_create(1);
   if (epoll_fd < 0) {
     perror("epoll_create failed");
     return;
   }
-  Conn conn(server_unix_socket, epoll_fd, true);
-  SetNotBlock(server_unix_socket);
+  Conn conn(read_fd_unix_socket, epoll_fd, true);
+  conn.SetUnixSocket();
   AddReadEvent(&conn);
   while (true) {
     int num = epoll_wait(epoll_fd, events, 2048, -1);
@@ -92,16 +86,6 @@ void subReactor(int server_unix_socket, int64_t sub_reactor_count) {
         ClearEvent(conn);
         delete conn;
       };
-      if (conn->Fd() == server_unix_socket) {
-        // 接受从mainReactor过来的连接
-        LoopAccept(server_unix_socket, 1024, [epoll_fd](int main_reactor_client_fd) {
-          Conn *conn = new Conn(main_reactor_client_fd, epoll_fd, true);
-          conn->SetUnixSocket();
-          AddReadEvent(conn);
-          cout << "accept mainReactor unix_socet connect. pid = " << getpid() << endl;
-        });
-        continue;
-      }
       if (conn->IsUnixSocket()) {
         int client_fd = 0;
         // 接收从mainReactor传递过来的客户端连接fd
@@ -113,7 +97,7 @@ void subReactor(int server_unix_socket, int64_t sub_reactor_count) {
       }
       // 执行到这里就是真正的客户端的读写事件
       if (events[i].events & EPOLLIN) {  // 可读
-        if (not conn->Read()) {  // 执行非阻塞读
+        if (not conn->Read()) {          // 执行非阻塞读
           releaseConn();
           continue;
         }
@@ -123,7 +107,7 @@ void subReactor(int server_unix_socket, int64_t sub_reactor_count) {
         }
       }
       if (events[i].events & EPOLLOUT) {  // 可写
-        if (not conn->Write()) {  // 执行非阻塞写
+        if (not conn->Write()) {          // 执行非阻塞写
           releaseConn();
           continue;
         }
@@ -136,43 +120,36 @@ void subReactor(int server_unix_socket, int64_t sub_reactor_count) {
   }
 }
 
-void createServerUnixSocket(vector<int> &server_unix_sockets, int64_t sub_reactor_count) {
+void createSubReactor(vector<int> &send_fd_unix_sockets, int64_t sub_reactor_count) {
   for (int i = 0; i < sub_reactor_count; i++) {
-    string path = "./unix.sock." + to_string(i);
-    remove(path.c_str());
-    int server_unix_socket = CreateListenUnixSocket(path);
-    assert(server_unix_socket > 0);
-    server_unix_sockets.push_back(server_unix_socket);
-  }
-}
-
-void createSubReactor(vector<int> &server_unix_sockets, int64_t sub_reactor_count) {
-  for (int i = 0; i < sub_reactor_count; i++) {
+    int socket_pairs[2];
+    int ret = socketpair(AF_UNIX, SOCK_STREAM, 0, socket_pairs);
+    assert(0 == ret);
+    // socket_pairs的第一个 fd 作为写端，保持着send_fd_unix_sockets数组中
+    send_fd_unix_sockets.push_back(socket_pairs[0]);
     pid_t pid = fork();
     assert(pid != -1);
     if (pid == 0) {  // 子进程
-      int fd = server_unix_sockets[i];
-      // 关闭不需要的fd，避免fd泄漏
-      for_each(server_unix_sockets.begin(), server_unix_sockets.end(), [fd](int server_unix_socket_fd) {
-        if (server_unix_socket_fd != fd) {
-          close(server_unix_socket_fd);
-        }
-      });
+      // 子进程会继承父进程写端的 fd，这里需要全部关闭，避免 fd 泄露
+      for_each(send_fd_unix_sockets.begin(), send_fd_unix_sockets.end(), [](int fd) { close(fd); });
       cout << "subReactor pid = " << getpid() << endl;
-      subReactor(fd, sub_reactor_count);
+      // socket_pairs[1]作为读端，用于获取传递的客户端连接
+      subReactor(socket_pairs[1], sub_reactor_count);
       exit(0);
+    } else {
+      close(socket_pairs[1]);  // 父进程关闭socket_pairs的另一个 fd
     }
   }
 }
 
-void createMainReactor(string ip, int64_t port, bool is_main_read, int64_t sub_reactor_count,
-                       int64_t main_reactor_count) {
+void createMainReactor(string ip, int64_t port, bool is_main_read, int64_t main_reactor_count,
+                       vector<int> &send_fd_unix_sockets) {
   for (int i = 0; i < main_reactor_count; i++) {
     pid_t pid = fork();
     assert(pid != -1);
     if (pid == 0) {  // 子进程
       cout << "mainReactor pid = " << getpid() << endl;
-      mainReactor(ip, port, is_main_read, sub_reactor_count);
+      mainReactor(ip, port, is_main_read, send_fd_unix_sockets);
       exit(0);
     }
   }
@@ -205,13 +182,11 @@ int main(int argc, char *argv[]) {
   CmdLine::Parse(argc, argv);
   main_reactor_count = main_reactor_count > GetNProcs() ? GetNProcs() : main_reactor_count;
   sub_reactor_count = sub_reactor_count > GetNProcs() ? GetNProcs() : sub_reactor_count;
-  vector<int> server_unix_sockets;
-  // TODO SubReactor进程 和 MainRector进程 可以建立一个基于unix socket的控制消息传递的功能。
-  createServerUnixSocket(server_unix_sockets, sub_reactor_count);
-  createSubReactor(server_unix_sockets, sub_reactor_count);  // 创建SubReactor进程
-  // 不再需要这些fd，需要及时关闭，避免fd泄漏
-  for_each(server_unix_sockets.begin(), server_unix_sockets.end(), [](int fd) { close(fd); });
-  createMainReactor(ip, port, is_main_read, sub_reactor_count, main_reactor_count);  // 创建MainRector进程
+  vector<int> send_fd_unix_sockets;  // MainReactor侧用于发送客户端连接的 unix socket数组
+  createSubReactor(send_fd_unix_sockets, sub_reactor_count);                            // 创建SubReactor进程
+  createMainReactor(ip, port, is_main_read, main_reactor_count, send_fd_unix_sockets);  // 创建MainRector进程
+  // 父进程写端的 fd数组已经没用了，这里需要全部关闭，避免 fd 泄露
+  for_each(send_fd_unix_sockets.begin(), send_fd_unix_sockets.end(), [](int fd) { close(fd); });
   while (true) sleep(1);  // 主进程陷入死循环
   return 0;
 }

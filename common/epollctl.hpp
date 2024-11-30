@@ -12,7 +12,7 @@ typedef struct EventData {
   }
   int fd{0};
   int epoll_fd{0};
-  int cid{MyCoroutine::kInvalidCid};
+  int cid{-1};
 } EventData;
 
 inline void AddReadEvent(MyEcho::Conn *conn, bool is_et = false, bool is_one_shot = false) {
