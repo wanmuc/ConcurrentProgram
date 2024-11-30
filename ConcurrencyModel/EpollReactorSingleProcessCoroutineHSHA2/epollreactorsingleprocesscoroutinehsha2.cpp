@@ -18,14 +18,6 @@
 using namespace std;
 using namespace MyEcho;
 
-struct EventData {
-  EventData(int fd, int epoll_fd) : fd_(fd), epoll_fd_(epoll_fd) {};
-  int fd_{0};
-  int epoll_fd_{0};
-  int cid_{MyCoroutine::kInvalidCid};
-  MyCoroutine::Schedule *schedule_{nullptr};
-};
-
 void EchoDeal(const std::string req_message, std::string &resp_message) { resp_message = req_message; }
 
 void pushToQueue(MyCoroutine::ConditionVariable &cond, list<EventData *> &event_data_queue, EventData *data) {
@@ -41,27 +33,27 @@ EventData *getQueueData(MyCoroutine::ConditionVariable &cond, list<EventData *> 
 }
 
 void Producer(MyCoroutine::ConditionVariable &cond, list<EventData *> &event_data_queue, EventData *event_data) {
-  ClearEvent(event_data->epoll_fd_, event_data->fd_, false);
+  ClearEvent(event_data->epoll_fd, event_data->fd, false);
   pushToQueue(cond, event_data_queue, event_data);
 }
 
 void Consumer(MyCoroutine::Schedule &schedule, MyCoroutine::ConditionVariable &cond,
               list<EventData *> &event_data_queue) {
   EventData *event_data = getQueueData(cond, event_data_queue);
-  event_data->cid_ =
-      schedule.CurrentCid();  // 注意，这里需要更新cid_，之前的cid_是Producer协程的id，需要更新成Consumer的协程id
+  // 注意，这里需要更新cid，之前的cid_是Producer协程的id，需要更新成Consumer的协程id
+  event_data->cid = schedule.CurrentCid();
   auto releaseConn = [&event_data]() {
-    ClearEvent(event_data->epoll_fd_, event_data->fd_);
+    ClearEvent(event_data->epoll_fd, event_data->fd);
     delete event_data;  // 释放内存
   };
-  AddReadEvent(event_data->epoll_fd_, event_data->fd_, event_data);  // 重新监听可读事件，不带one_shot标记
+  AddReadEvent(event_data->epoll_fd, event_data->fd, event_data);  // 重新监听可读事件，不带one_shot标记
   while (true) {
     ssize_t ret = 0;
     Codec codec;
     string *req_message{nullptr};
     string resp_message;
     while (true) {  // 读操作
-      ret = read(event_data->fd_, codec.Data(), codec.Len());
+      ret = read(event_data->fd, codec.Data(), codec.Len());
       if (ret == 0) {
         perror("peer close connection");
         releaseConn();
@@ -70,7 +62,7 @@ void Consumer(MyCoroutine::Schedule &schedule, MyCoroutine::ConditionVariable &c
       if (ret < 0) {
         if (EINTR == errno) continue;  // 被中断，可以重启读操作
         if (EAGAIN == errno or EWOULDBLOCK == errno) {
-          event_data->schedule_->CoroutineYield();  // 让出cpu，切换到主协程，等待下一次数据可读
+          schedule.CoroutineYield();  // 让出cpu，切换到主协程，等待下一次数据可读
           continue;
         }
         perror("read failed");
@@ -88,14 +80,14 @@ void Consumer(MyCoroutine::Schedule &schedule, MyCoroutine::ConditionVariable &c
     delete req_message;
     Packet pkt;
     codec.EnCode(resp_message, pkt);
-    ModToWriteEvent(event_data->epoll_fd_, event_data->fd_, event_data);  // 监听可写事件。
+    ModToWriteEvent(event_data->epoll_fd, event_data->fd, event_data);  // 监听可写事件。
     size_t sendLen = 0;
     while (sendLen != pkt.UseLen()) {  // 写操作
-      ret = write(event_data->fd_, pkt.Data() + sendLen, pkt.UseLen() - sendLen);
+      ret = write(event_data->fd, pkt.Data() + sendLen, pkt.UseLen() - sendLen);
       if (ret < 0) {
         if (EINTR == errno) continue;  // 被中断，可以重启写操作
         if (EAGAIN == errno or EWOULDBLOCK == errno) {
-          event_data->schedule_->CoroutineYield();  // 让出cpu，切换到主协程，等待下一次数据可写
+          schedule.CoroutineYield();  // 让出cpu，切换到主协程，等待下一次数据可写
           continue;
         }
         perror("write failed");
@@ -104,7 +96,7 @@ void Consumer(MyCoroutine::Schedule &schedule, MyCoroutine::ConditionVariable &c
       }
       sendLen += ret;
     }
-    ModToReadEvent(event_data->epoll_fd_, event_data->fd_, event_data);  // 监听可读事件。
+    ModToReadEvent(event_data->epoll_fd, event_data->fd, event_data);  // 监听可读事件。
   }
 }
 
@@ -160,7 +152,7 @@ int main(int argc, char *argv[]) {
     msec = 0;  // 下次大概率还有事件，故msec设置为0
     for (int i = 0; i < num; i++) {
       EventData *event_data = (EventData *)events[i].data.ptr;
-      if (event_data->fd_ == sock_fd) {
+      if (event_data->fd == sock_fd) {
         LoopAccept(sock_fd, 2048, [epoll_fd](int client_fd) {
           EventData *event_data = new EventData(client_fd, epoll_fd);
           SetNotBlock(client_fd);
@@ -168,13 +160,12 @@ int main(int argc, char *argv[]) {
         });
         continue;
       }
-      if (event_data->cid_ == MyCoroutine::kInvalidCid) {  // 第一次事件，则创建协程
-        event_data->schedule_ = &schedule;
-        event_data->cid_ =
+      if (event_data->cid == MyCoroutine::kInvalidCid) {  // 第一次事件，则创建协程
+        event_data->cid =
             schedule.CoroutineCreate(Producer, std::ref(cond), std::ref(event_data_queue), event_data);  // 创建协程
-        schedule.CoroutineResume(event_data->cid_);
+        schedule.CoroutineResume(event_data->cid);
       } else {
-        schedule.CoroutineResume(event_data->cid_);  // 唤醒之前主动让出cpu的协程
+        schedule.CoroutineResume(event_data->cid);  // 唤醒之前主动让出cpu的协程
       }
     }
     schedule.CoCondResume();
