@@ -80,7 +80,8 @@ void Consumer(MyCoroutine::Schedule &schedule, MyCoroutine::ConditionVariable &c
   }
 }
 
-void Producer(MyCoroutine::ConditionVariable &cond, list<IoURing::Request *> request_queue, IoURing::Request *request) {
+void Producer(MyCoroutine::ConditionVariable &cond, list<IoURing::Request *> &request_queue,
+              IoURing::Request *request) {
   pushToQueue(cond, request_queue, request);
 }
 
