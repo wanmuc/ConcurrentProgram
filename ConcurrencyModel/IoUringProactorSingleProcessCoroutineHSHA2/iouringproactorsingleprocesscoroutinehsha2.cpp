@@ -144,7 +144,7 @@ int main(int argc, char *argv[]) {
       request->cqe_res = cqe->res;
       schedule.CoroutineResume(request->cid);  // 唤醒之前主动让出cpu的协程
     }
-    schedule.CoSemaphoreResume();  // 唤醒 Consumer 协程
+    schedule.CoCondResume();  // 唤醒 Consumer 协程
     io_uring_cq_advance(&ring, count);
   }
   io_uring_queue_exit(&ring);
