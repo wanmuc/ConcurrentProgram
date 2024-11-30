@@ -37,7 +37,7 @@ void ReleaseConn(IoURing::Request *request) {
 
 void Consumer(MyCoroutine::Schedule &schedule, MyCoroutine::Channel<IoURing::Request> &channel, struct io_uring &ring) {
   IoURing::Request *request = channel.Receive();
-  // 注意，这里需要更新cid_，之前的cid_是Producer协程的id，需要更新成Consumer的协程id
+  // 注意，这里需要更新cid，之前的cid是Producer协程的id，需要更新成Consumer的协程id
   request->cid = schedule.CurrentCid();
   while (true) {
     while (not request->conn.OneMessage()) {

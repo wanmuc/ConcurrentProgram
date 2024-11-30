@@ -40,7 +40,7 @@ void Producer(MyCoroutine::ConditionVariable &cond, list<EventData *> &event_dat
 void Consumer(MyCoroutine::Schedule &schedule, MyCoroutine::ConditionVariable &cond,
               list<EventData *> &event_data_queue) {
   EventData *event_data = getQueueData(cond, event_data_queue);
-  // 注意，这里需要更新cid，之前的cid_是Producer协程的id，需要更新成Consumer的协程id
+  // 注意，这里需要更新cid，之前的cid是Producer协程的id，需要更新成Consumer的协程id
   event_data->cid = schedule.CurrentCid();
   auto releaseConn = [&event_data]() {
     ClearEvent(event_data->epoll_fd, event_data->fd);
