@@ -90,17 +90,21 @@ void OnWriteEvent(struct io_uring &ring, IoURing::Request *request, struct io_ur
   }
 }
 
-void workerHandler(struct io_uring &ring) {
+void workerHandler() {
   while (true) {
     IoURing::Request *request = getQueueData();
-    request->conn.EnCode();                  // 应答数据序列化
-    IoURing::AddWriteEvent(&ring, request);  // 发起异步写，io_uring 是线程安全的。
+    request->conn.EnCode();                          // 应答数据序列化
+    IoURing::AddWriteEvent(request->ring, request);  // 发起异步写，io_uring 是线程安全的。
   }
 }
 
-void ioHandler(string ip, int64_t port, struct io_uring &ring) {
+void ioHandler(string ip, int64_t port) {
   int sock_fd = CreateListenSocket(ip, port, true);
   assert(sock_fd >= 0);
+  struct io_uring ring;
+  uint32_t entries = 1024;
+  int ret = io_uring_queue_init(entries, &ring, IORING_SETUP_SQPOLL);
+  assert(0 == ret);
   IoURing::Request *conn_request = IoURing::NewRequest(sock_fd, IoURing::ACCEPT);
   IoURing::AddAcceptEvent(&ring, conn_request);
   while (true) {
@@ -155,16 +159,11 @@ int main(int argc, char *argv[]) {
   io_count = io_count > GetNProcs() ? GetNProcs() : io_count;
   worker_count = worker_count > GetNProcs() ? GetNProcs() : worker_count;
 
-  struct io_uring ring;
-  uint32_t entries = 1024;
-  int ret = io_uring_queue_init(entries, &ring, IORING_SETUP_SQPOLL);
-  assert(0 == ret);
-
-  for (int i = 0; i < worker_count; i++) {           // 创建worker线程
-    std::thread(workerHandler, ref(ring)).detach();  // 这里需要调用detach，让创建的线程独立运行
+  for (int i = 0; i < worker_count; i++) {  // 创建worker线程
+    std::thread(workerHandler).detach();    // 这里需要调用detach，让创建的线程独立运行
   }
-  for (int i = 0; i < io_count; i++) {                     // 创建io线程
-    std::thread(ioHandler, ip, port, ref(ring)).detach();  // 这里需要调用detach，让创建的线程独立运行
+  for (int i = 0; i < io_count; i++) {          // 创建io线程
+    std::thread(ioHandler, ip, port).detach();  // 这里需要调用detach，让创建的线程独立运行
   }
   while (true) sleep(1);  // 主线程陷入死循环
   io_uring_queue_exit(&ring);
