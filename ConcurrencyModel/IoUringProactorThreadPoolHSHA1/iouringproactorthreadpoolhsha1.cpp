@@ -90,7 +90,7 @@ void OnWriteEvent(struct io_uring &ring, IoURing::Request *request, struct io_ur
   }
 }
 
-void workerHandler() {
+void workerHandler(struct io_uring &ring) {
   while (true) {
     IoURing::Request *request = getQueueData();
     request->conn.EnCode();                  // 应答数据序列化
