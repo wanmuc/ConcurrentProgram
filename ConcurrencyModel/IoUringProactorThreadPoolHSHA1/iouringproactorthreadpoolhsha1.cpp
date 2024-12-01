@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-#include <assert.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -8,7 +7,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <condition_variable>
 #include <iostream>
+#include <mutex>
+#include <queue>
 #include <thread>
 
 #include "common/cmdline.h"
@@ -17,6 +19,26 @@
 
 using namespace std;
 using namespace MyEcho;
+
+std::mutex Mutex;
+std::condition_variable Cond;
+std::queue<IoURing::Request *> Queue;
+
+void pushToQueue(IoURing::Request *request) {
+  {
+    std::unique_lock<std::mutex> locker(Mutex);
+    Queue.push(request);
+  }
+  Cond.notify_one();
+}
+
+IoURing::Request *getQueueData() {
+  std::unique_lock<std::mutex> locker(Mutex);
+  Cond.wait(locker, []() -> bool { return Queue.size() > 0; });
+  IoURing::Request *request = Queue.front();
+  Queue.pop();
+  return request;
+}
 
 void ReleaseConn(IoURing::Request *request) {
   errno = -request->cqe_res;  // io_uring返回的cqe中真正错误码的值，需要再取反。
@@ -44,10 +66,9 @@ void OnReadEvent(struct io_uring &ring, IoURing::Request *request, struct io_uri
   }
   // 执行到这里就是读取成功
   request->conn.ReadCallBack(ret);
-  // 如果得到一个完整的请求，则写应答数据
+  // 如果得到一个完整的请求，则通过队列传递给 worker 线程
   if (request->conn.OneMessage()) {
-    request->conn.EnCode();                  // 应答数据序列化
-    IoURing::AddWriteEvent(&ring, request);  // 发起异步写
+    pushToQueue(request);
   } else {
     IoURing::AddReadEvent(&ring, request);  // 否则继续发起异步读
   }
@@ -69,13 +90,17 @@ void OnWriteEvent(struct io_uring &ring, IoURing::Request *request, struct io_ur
   }
 }
 
-void handler(string ip, int64_t port) {
+void workerHandler() {
+  while (true) {
+    IoURing::Request *request = getQueueData();
+    request->conn.EnCode();                  // 应答数据序列化
+    IoURing::AddWriteEvent(&ring, request);  // 发起异步写，io_uring 是线程安全的。
+  }
+}
+
+void ioHandler(string ip, int64_t port, struct io_uring &ring) {
   int sock_fd = CreateListenSocket(ip, port, true);
   assert(sock_fd >= 0);
-  struct io_uring ring;
-  uint32_t entries = 1024;
-  int ret = io_uring_queue_init(entries, &ring, IORING_SETUP_SQPOLL);
-  assert(0 == ret);
   IoURing::Request *conn_request = IoURing::NewRequest(sock_fd, IoURing::ACCEPT);
   IoURing::AddAcceptEvent(&ring, conn_request);
   while (true) {
@@ -101,33 +126,47 @@ void handler(string ip, int64_t port) {
     }
     io_uring_cq_advance(&ring, count);
   }
-  io_uring_queue_exit(&ring);
   IoURing::DeleteRequest(conn_request);
 }
 
 void usage() {
-  cout << "IoUringProactorThreadPool -ip 0.0.0.0 -port 1688 -poolsize 8" << endl;
+  cout << "IoUringProactorThreadPoolHSHA1 -ip 0.0.0.0 -port 1688 -io 3 -worker 8" << endl;
   cout << "options:" << endl;
   cout << "    -h,--help      print usage" << endl;
   cout << "    -ip,--ip       listen ip" << endl;
   cout << "    -port,--port   listen port" << endl;
-  cout << "    -poolsize,--poolsize   pool size" << endl;
+  cout << "    -io,--io       io thread count" << endl;
+  cout << "    -worker,--worker   worker thread count" << endl;
   cout << endl;
 }
 
 int main(int argc, char *argv[]) {
   string ip;
   int64_t port;
-  int64_t pool_size;
+  int64_t io_count;
+  int64_t worker_count;
   CmdLine::StrOptRequired(&ip, "ip");
   CmdLine::Int64OptRequired(&port, "port");
-  CmdLine::Int64OptRequired(&pool_size, "poolsize");
+  CmdLine::Int64OptRequired(&io_count, "io");
+  CmdLine::Int64OptRequired(&worker_count, "worker");
   CmdLine::SetUsage(usage);
   CmdLine::Parse(argc, argv);
-  pool_size = pool_size > GetNProcs() ? GetNProcs() : pool_size;
-  for (int i = 0; i < pool_size; i++) {
-    std::thread(handler, ip, port).detach();  // 这里需要调用detach，让创建的线程独立运行
+
+  io_count = io_count > GetNProcs() ? GetNProcs() : io_count;
+  worker_count = worker_count > GetNProcs() ? GetNProcs() : worker_count;
+
+  struct io_uring ring;
+  uint32_t entries = 1024;
+  int ret = io_uring_queue_init(entries, &ring, IORING_SETUP_SQPOLL);
+  assert(0 == ret);
+
+  for (int i = 0; i < worker_count; i++) {           // 创建worker线程
+    std::thread(workerHandler, ref(ring)).detach();  // 这里需要调用detach，让创建的线程独立运行
+  }
+  for (int i = 0; i < io_count; i++) {                     // 创建io线程
+    std::thread(ioHandler, ip, port, ref(ring)).detach();  // 这里需要调用detach，让创建的线程独立运行
   }
   while (true) sleep(1);  // 主线程陷入死循环
+  io_uring_queue_exit(&ring);
   return 0;
 }
