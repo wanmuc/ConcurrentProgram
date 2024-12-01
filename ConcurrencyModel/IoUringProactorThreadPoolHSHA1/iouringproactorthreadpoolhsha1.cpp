@@ -130,6 +130,7 @@ void ioHandler(string ip, int64_t port) {
     }
     io_uring_cq_advance(&ring, count);
   }
+  io_uring_queue_exit(&ring);
   IoURing::DeleteRequest(conn_request);
 }
 
@@ -166,6 +167,6 @@ int main(int argc, char *argv[]) {
     std::thread(ioHandler, ip, port).detach();  // 这里需要调用detach，让创建的线程独立运行
   }
   while (true) sleep(1);  // 主线程陷入死循环
-  io_uring_queue_exit(&ring);
+
   return 0;
 }
