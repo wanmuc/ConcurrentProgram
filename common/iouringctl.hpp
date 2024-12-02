@@ -29,6 +29,7 @@ inline void DeleteRequest(Request *request) {
 
 inline void AddAcceptEvent(struct io_uring *ring, Request *request) {
   struct io_uring_sqe *sqe = io_uring_get_sqe(ring);
+  request->event = ACCEPT;
   io_uring_prep_accept(sqe, request->conn.Fd(), nullptr, 0, 0);
   io_uring_sqe_set_data(sqe, request);
   request->ring = ring;
