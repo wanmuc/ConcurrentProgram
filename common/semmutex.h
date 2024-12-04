@@ -4,6 +4,7 @@
 
 #include <string>
 
+// 信号量实现的互斥锁，可以用于进程间的同步
 class SemMutex {
  public:
   SemMutex(std::string sem_name) : sem_name_(sem_name) {

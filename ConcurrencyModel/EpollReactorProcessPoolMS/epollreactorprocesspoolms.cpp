@@ -184,7 +184,8 @@ int main(int argc, char *argv[]) {
   sub_reactor_count = sub_reactor_count > GetNProcs() ? GetNProcs() : sub_reactor_count;
   vector<int> send_fd_unix_sockets;  // MainReactor侧用于发送客户端连接的 unix socket数组
   createSubReactor(send_fd_unix_sockets, sub_reactor_count);                            // 创建SubReactor进程
-  createMainReactor(ip, port, is_main_read, main_reactor_count, send_fd_unix_sockets);  // 创建MainRector进程
+  // TODO，主进程，多个子线程的方式来做MainReactor
+  createMainReactor(ip, port, is_main_read, main_reactor_count, send_fd_unix_sockets);  // 创建MainReactor线程
   // 父进程写端的 fd数组已经没用了，这里需要全部关闭，避免 fd 泄露
   for_each(send_fd_unix_sockets.begin(), send_fd_unix_sockets.end(), [](int fd) { close(fd); });
   while (true) sleep(1);  // 主进程陷入死循环
