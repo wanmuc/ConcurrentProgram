@@ -1,11 +1,11 @@
-#include "conditionvariable.h"
+#include "sync/conditionvariable.h"
 
 #include <assert.h>
 
 #include <iostream>
 
 #include "UTestCore.h"
-#include "mutex.h"
+#include "sync/mutex.h"
 #include "mycoroutine.h"
 using namespace std;
 

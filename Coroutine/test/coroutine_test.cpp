@@ -4,9 +4,9 @@
 
 #include "UTestCore.h"
 #include "localvariable.h"
-#include "mutex.h"
+#include "sync/mutex.h"
 #include "mycoroutine.h"
-#include "waitgroup.h"
+#include "sync/waitgroup.h"
 using namespace std;
 
 namespace {

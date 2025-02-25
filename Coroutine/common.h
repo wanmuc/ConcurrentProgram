@@ -3,10 +3,8 @@
 #include <ucontext.h>
 
 #include <algorithm>
-#include <cstdint>
 #include <functional>
 #include <list>
-#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -16,7 +14,7 @@ using namespace std;
 namespace MyCoroutine {
 constexpr int32_t kInvalidCid = -1;           // 无效的从协程id
 constexpr int32_t kInvalidBid = -1;           // 无效的批量执行id
-constexpr int32_t kStackSize = 1280 * 1024;   // 协程栈默认大小为 128K
+constexpr int32_t kStackSize = 64 * 1024;     // 协程栈默认大小为 64K
 constexpr int32_t kMaxBatchSize = 5120;       // 允许创建的最大批量执行池大小
 constexpr int32_t kMaxCoroutineSize = 10240;  // 允许创建的最大协程池大小
 /**
@@ -149,6 +147,16 @@ typedef struct CoCallOnce {
   CallOnceState state;                     // CallOnce状态
   unordered_set<int32_t> suspend_cid_set;  // 被挂起的从协程id查重集合
 } CoCallOnce;
+
+// 协程的同步原语
+typedef struct CoSync {
+  unordered_set<CoMutex *> mutexs;                         // 互斥锁集合
+  unordered_set<CoCond *> conds;                           // 条件变量集合
+  unordered_set<CoRWLock *> rwlocks;                       // 读写锁集合
+  unordered_set<CoSemaphore *> semaphores;                 // 信号量集合
+  unordered_set<CoCallOnce *> call_onces;                  // CallOnce集合
+  unordered_map<string, CoSingleFlight *> single_flights;  // SingleFlight映射
+} CoSync;
 
 // 协程结构体
 typedef struct Coroutine {

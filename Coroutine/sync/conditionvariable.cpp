@@ -1,14 +1,15 @@
-#include "conditionvariable.h"
+#include "sync/conditionvariable.h"
 
 #include "mycoroutine.h"
 
 namespace MyCoroutine {
 void Schedule::CoCondInit(CoCond &cond) {
   cond.state = CondState::kNotifyNone;
-  conds_.insert(&cond);
+  cond.notify_count = 0;
+  cosync_.conds.insert(&cond);
 }
 
-void Schedule::CoCondClear(CoCond &cond) { conds_.erase(&cond); }
+void Schedule::CoCondClear(CoCond &cond) { cosync_.conds.erase(&cond); }
 
 void Schedule::CoCondWait(CoCond &cond, std::function<bool()> pred) {
   while (not pred()) {
@@ -40,7 +41,7 @@ void Schedule::CoCondNotifyAll(CoCond &cond) {
 int Schedule::CoCondResume() {
   assert(is_master_);
   int count = 0;
-  for (auto *cond : conds_) {
+  for (auto *cond : cosync_.conds) {
     if (cond->state == CondState::kNotifyNone) continue;  // 没有通知，不需要互相等待的从协程
     // 通知了，但是没有挂起的从协程，也不需要唤醒，注意这里不调整通知的状态
     if (cond->suspend_cid_set.size() <= 0) continue;
@@ -49,7 +50,7 @@ int Schedule::CoCondResume() {
       while (cond->notify_count--) {
         int32_t cid = *cond->suspend_cid_set.begin();
         cond->suspend_cid_set.erase(cid);
-        CoroutineResume(cid);  // 每次只能唤醒等待队列中的一个从协程，采用先进先出的策略
+        CoroutineResume(cid);  // 唤醒等待队列中的一个从协程，采用先进先出的策略
       }
     } else if (cond->state == CondState::kNotifyAll) {
       // 唤醒所有等待的从协程

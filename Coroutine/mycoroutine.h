@@ -31,12 +31,7 @@ class Schedule {
     return cid;
   }
 
-  void Run();                                       // 协程调度执行
-  bool IsFinish() { return not_idle_count_ <= 0; }  // 协程完成了协程调度
-  int32_t CurrentCid() {
-    assert(not is_master_);
-    return slave_cid_;
-  }
+  void Run();                         // 协程调度执行
   void CoroutineYield();              // 从协程让出cpu执行权
   void CoroutineResume(int32_t cid);  // 主协程唤醒指定的从协程
   void Sleep(int64_t time_out_ms, function<void(int64_t, function<void()>)> start_timer);  // 协程休眠
@@ -121,9 +116,9 @@ class Schedule {
   template <typename Function, typename... Args>
   void CoSingleFlightDo(CoSingleFlight &single_flight, string key, Function &&func, Args &&...args) {
     assert(not is_master_);
-    if (single_flights_.find(key) == single_flights_.end()) {
+    if (cosync_.single_flights.find(key) == cosync_.single_flights.end()) {
       single_flight.key = key;
-      single_flights_[key] = &single_flight;
+      cosync_.single_flights[key] = &single_flight;
     }
     if (single_flight.state == SingleFlightState::kInit) {
       single_flight.state = SingleFlightState::kInCall;
@@ -155,11 +150,6 @@ class Schedule {
   Coroutine *coroutines_[kMaxCoroutineSize];                // 从协程数组池
   Batch *batchs_[kMaxBatchSize];                            // 批量执行数组池
   list<int> batch_finish_cid_list_;                         // 完成了批量执行的关联的从协程id
-  unordered_set<CoMutex *> mutexs_;                         // 互斥锁集合
-  unordered_set<CoCond *> conds_;                           // 条件变量集合
-  unordered_set<CoRWLock *> rwlocks_;                       // 读写锁集合
-  unordered_set<CoSemaphore *> semaphores_;                 // 信号量集合
-  unordered_set<CoCallOnce *> call_onces_;                  // CallOnce集合
-  unordered_map<string, CoSingleFlight *> single_flights_;  // SingleFlight映射
+  CoSync cosync_;                                           // 协程同步原语
 };
 }  // namespace MyCoroutine
