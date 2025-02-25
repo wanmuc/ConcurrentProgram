@@ -8,7 +8,7 @@ CFLAGS = -g -O2 -Wall -Werror -pipe -m64
 # c++编译选项
 CXXFLAGS = -g -O2 -Wall -Werror -pipe -m64 -std=c++11
 # 连接选项
-LDFLAGS = -pthread
+LDFLAGS = -luring
 # 头文件目录
 INCFLAGS = -I../../
 # 源文件目录

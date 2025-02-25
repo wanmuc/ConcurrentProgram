@@ -13,9 +13,9 @@
 #include <queue>
 #include <thread>
 
-#include "../../common/cmdline.h"
-#include "../../common/conn.hpp"
-#include "../../common/epollctl.hpp"
+#include "common/cmdline.h"
+#include "common/conn.hpp"
+#include "common/epollctl.hpp"
 
 using namespace std;
 using namespace MyEcho;
@@ -101,7 +101,7 @@ void ioHandler(string ip, int64_t port) {
         delete conn;
       };
       if (events[i].events & EPOLLIN) {  // 可读
-        if (not conn->Read()) {  // 执行非阻塞read
+        if (not conn->Read()) {          // 执行非阻塞read
           releaseConn();
           continue;
         }
@@ -112,7 +112,7 @@ void ioHandler(string ip, int64_t port) {
         }
       }
       if (events[i].events & EPOLLOUT) {  // 可写
-        if (not conn->Write()) {  // 执行非阻塞write
+        if (not conn->Write()) {          // 执行非阻塞write
           releaseConn();
           continue;
         }
@@ -153,10 +153,10 @@ int main(int argc, char *argv[]) {
   cout << "is_direct=" << is_direct << endl;
   io_count = io_count > GetNProcs() ? GetNProcs() : io_count;
   worker_count = worker_count > GetNProcs() ? GetNProcs() : worker_count;
-  for (int i = 0; i < worker_count; i++) {  // 创建worker线程
+  for (int i = 0; i < worker_count; i++) {           // 创建worker线程
     std::thread(workerHandler, is_direct).detach();  // 这里需要调用detach，让创建的线程独立运行
   }
-  for (int i = 0; i < io_count; i++) {  // 创建io线程
+  for (int i = 0; i < io_count; i++) {          // 创建io线程
     std::thread(ioHandler, ip, port).detach();  // 这里需要调用detach，让创建的线程独立运行
   }
   while (true) sleep(1);  // 主线程陷入死循环

@@ -5,6 +5,16 @@
 
 #include "conn.hpp"
 
+typedef struct EventData {
+  EventData(int fd, int epoll_fd) {
+    this->fd = fd;
+    this->epoll_fd = epoll_fd;
+  }
+  int fd{0};
+  int epoll_fd{0};
+  int cid{-1};
+} EventData;
+
 inline void AddReadEvent(MyEcho::Conn *conn, bool is_et = false, bool is_one_shot = false) {
   epoll_event event;
   event.data.ptr = (void *)conn;

@@ -1,14 +1,15 @@
+#include <arpa/inet.h>
 #include <assert.h>
-#include <errno.h>
 #include <fcntl.h>
-#include <liburing.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <sys/epoll.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
-#include <functional>
 #include <iostream>
+#include <thread>
 
 #include "common/cmdline.h"
 #include "common/iouringctl.hpp"
@@ -16,16 +17,6 @@
 
 using namespace std;
 using namespace MyEcho;
-
-void usage() {
-  cout << "IoUringProactorSingleProcess -ip 0.0.0.0 -port 1688 -io_uring_flag 1" << endl;
-  cout << "options:" << endl;
-  cout << "    -h,--help      print usage" << endl;
-  cout << "    -ip,--ip       listen ip" << endl;
-  cout << "    -port,--port   listen port" << endl;
-  cout << "    -io_uring_flag,--io_uring_flag   1 is defualt, 2 is SQPOLL" << endl;
-  cout << endl;
-}
 
 void ReleaseConn(IoURing::Request *request) {
   errno = -request->cqe_res;  // io_uring返回的cqe中真正错误码的值，需要再取反。
@@ -78,32 +69,13 @@ void OnWriteEvent(struct io_uring &ring, IoURing::Request *request, struct io_ur
   }
 }
 
-int main(int argc, char *argv[]) {
-  string ip;
-  int64_t port;
-  int64_t io_uring_flag;
-  CmdLine::StrOptRequired(&ip, "ip");
-  CmdLine::Int64OptRequired(&port, "port");
-  CmdLine::Int64OptRequired(&io_uring_flag, "io_uring_flag");
-  CmdLine::SetUsage(usage);
-  CmdLine::Parse(argc, argv);
-  int sock_fd = CreateListenSocket(ip, port, false);
-  if (sock_fd < 0) {
-    return -1;
-  }
-
-  unsigned flag = 0;
-  if (io_uring_flag == 2) {
-    flag = IORING_SETUP_SQPOLL;
-  }
+void handler(string ip, int64_t port) {
+  int sock_fd = CreateListenSocket(ip, port, true);
+  assert(sock_fd >= 0);
   struct io_uring ring;
   uint32_t entries = 1024;
-  int ret = io_uring_queue_init(entries, &ring, flag);
-  if (ret < 0) {
-    errno = -ret;
-    perror("io_uring_queue_init failed");
-    return ret;
-  }
+  int ret = io_uring_queue_init(entries, &ring, IORING_SETUP_SQPOLL);
+  assert(0 == ret);
   IoURing::Request *conn_request = IoURing::NewRequest(sock_fd, IoURing::ACCEPT);
   IoURing::AddAcceptEvent(&ring, conn_request);
   while (true) {
@@ -131,5 +103,31 @@ int main(int argc, char *argv[]) {
   }
   io_uring_queue_exit(&ring);
   IoURing::DeleteRequest(conn_request);
+}
+
+void usage() {
+  cout << "IoUringProactorThreadPool -ip 0.0.0.0 -port 1688 -poolsize 8" << endl;
+  cout << "options:" << endl;
+  cout << "    -h,--help      print usage" << endl;
+  cout << "    -ip,--ip       listen ip" << endl;
+  cout << "    -port,--port   listen port" << endl;
+  cout << "    -poolsize,--poolsize   pool size" << endl;
+  cout << endl;
+}
+
+int main(int argc, char *argv[]) {
+  string ip;
+  int64_t port;
+  int64_t pool_size;
+  CmdLine::StrOptRequired(&ip, "ip");
+  CmdLine::Int64OptRequired(&port, "port");
+  CmdLine::Int64OptRequired(&pool_size, "poolsize");
+  CmdLine::SetUsage(usage);
+  CmdLine::Parse(argc, argv);
+  pool_size = pool_size > GetNProcs() ? GetNProcs() : pool_size;
+  for (int i = 0; i < pool_size; i++) {
+    std::thread(handler, ip, port).detach();  // 这里需要调用detach，让创建的线程独立运行
+  }
+  while (true) sleep(1);  // 主线程陷入死循环
   return 0;
 }

@@ -10,26 +10,18 @@
 
 #include <iostream>
 
-#include "../../common/cmdline.h"
-#include "../../Coroutine/mycoroutine.h"
-#include "../../common/epollctl.hpp"
+#include "Coroutine/mycoroutine.h"
+#include "common/cmdline.h"
+#include "common/epollctl.hpp"
 
 using namespace std;
 using namespace MyEcho;
 
-struct EventData {
-  EventData(int fd, int epoll_fd) : fd_(fd), epoll_fd_(epoll_fd){};
-  int fd_{0};
-  int epoll_fd_{0};
-  int cid_{MyCoroutine::kInvalidCid};
-  MyCoroutine::Schedule *schedule_{nullptr};
-};
-
 void EchoDeal(const std::string req_message, std::string &resp_message) { resp_message = req_message; }
 
-void handlerClient(EventData *event_data) {
+void handlerClient(MyCoroutine::Schedule &schedule, EventData *event_data) {
   auto releaseConn = [&event_data]() {
-    ClearEvent(event_data->epoll_fd_, event_data->fd_);
+    ClearEvent(event_data->epoll_fd, event_data->fd);
     delete event_data;  // 释放内存
   };
   while (true) {
@@ -38,7 +30,7 @@ void handlerClient(EventData *event_data) {
     string *req_message{nullptr};
     string resp_message;
     while (true) {  // 读操作
-      ret = read(event_data->fd_, codec.Data(), codec.Len());
+      ret = read(event_data->fd, codec.Data(), codec.Len());
       if (ret == 0) {
         perror("peer close connection");
         releaseConn();
@@ -47,7 +39,7 @@ void handlerClient(EventData *event_data) {
       if (ret < 0) {
         if (EINTR == errno) continue;  // 被中断，可以重启读操作
         if (EAGAIN == errno or EWOULDBLOCK == errno) {
-          event_data->schedule_->CoroutineYield();  // 让出cpu，切换到主协程，等待下一次数据可读
+          schedule.CoroutineYield();  // 让出cpu，切换到主协程，等待下一次数据可读
           continue;
         }
         perror("read failed");
@@ -65,14 +57,14 @@ void handlerClient(EventData *event_data) {
     delete req_message;
     Packet pkt;
     codec.EnCode(resp_message, pkt);
-    ModToWriteEvent(event_data->epoll_fd_, event_data->fd_, event_data);  // 监听可写事件。
+    ModToWriteEvent(event_data->epoll_fd, event_data->fd, event_data);  // 监听可写事件。
     size_t sendLen = 0;
     while (sendLen != pkt.UseLen()) {  // 写操作
-      ret = write(event_data->fd_, pkt.Data() + sendLen, pkt.UseLen() - sendLen);
+      ret = write(event_data->fd, pkt.Data() + sendLen, pkt.UseLen() - sendLen);
       if (ret < 0) {
         if (EINTR == errno) continue;  // 被中断，可以重启写操作
         if (EAGAIN == errno or EWOULDBLOCK == errno) {
-          event_data->schedule_->CoroutineYield();  // 让出cpu，切换到主协程，等待下一次数据可写
+          schedule.CoroutineYield();  // 让出cpu，切换到主协程，等待下一次数据可写
           continue;
         }
         perror("write failed");
@@ -81,7 +73,7 @@ void handlerClient(EventData *event_data) {
       }
       sendLen += ret;
     }
-    ModToReadEvent(event_data->epoll_fd_, event_data->fd_, event_data);  // 监听可读事件。
+    ModToReadEvent(event_data->epoll_fd, event_data->fd, event_data);  // 监听可读事件。
   }
 }
 
@@ -133,7 +125,7 @@ int main(int argc, char *argv[]) {
     if (is_dynamic_time_out) msec = 0;  // 下次大概率还有事件，故msec设置为0
     for (int i = 0; i < num; i++) {
       EventData *event_data = (EventData *)events[i].data.ptr;
-      if (event_data->fd_ == sock_fd) {
+      if (event_data->fd == sock_fd) {
         LoopAccept(sock_fd, 2048, [epoll_fd](int client_fd) {
           EventData *event_data = new EventData(client_fd, epoll_fd);
           SetNotBlock(client_fd);
@@ -141,12 +133,11 @@ int main(int argc, char *argv[]) {
         });
         continue;
       }
-      if (event_data->cid_ == MyCoroutine::kInvalidCid) {  // 第一次事件，则创建协程
-        event_data->schedule_ = &schedule;
-        event_data->cid_ = schedule.CoroutineCreate(handlerClient, event_data);  // 创建协程
-        schedule.CoroutineResume(event_data->cid_);
+      if (event_data->cid == MyCoroutine::kInvalidCid) {  // 第一次事件，则创建协程
+        event_data->cid = schedule.CoroutineCreate(handlerClient, ref(schedule), event_data);  // 创建协程
+        schedule.CoroutineResume(event_data->cid);
       } else {
-        schedule.CoroutineResume(event_data->cid_);  // 唤醒之前主动让出cpu的协程
+        schedule.CoroutineResume(event_data->cid);  // 唤醒之前主动让出cpu的协程
       }
     }
   }

@@ -11,9 +11,9 @@
 #include <iostream>
 #include <thread>
 
-#include "../../common/cmdline.h"
-#include "../../common/conn.hpp"
-#include "../../common/epollctl.hpp"
+#include "common/cmdline.h"
+#include "common/conn.hpp"
+#include "common/epollctl.hpp"
 
 using namespace std;
 using namespace MyEcho;
@@ -53,7 +53,7 @@ void handler(string ip, int64_t port) {
         delete conn;
       };
       if (events[i].events & EPOLLIN) {  // 可读
-        if (not conn->Read()) {  // 执行读失败
+        if (not conn->Read()) {          // 执行读失败
           releaseConn();
           continue;
         }
@@ -63,7 +63,7 @@ void handler(string ip, int64_t port) {
         }
       }
       if (events[i].events & EPOLLOUT) {  // 可写
-        if (not conn->Write()) {  // 执行写失败
+        if (not conn->Write()) {          // 执行写失败
           releaseConn();
           continue;
         }
