@@ -10,9 +10,9 @@ CXXFLAGS = -g -O2 -Wall -Werror -pipe -m64 -std=c++11
 # 连接选项
 LDFLAGS =
 # 头文件目录
-INCFLAGS = -I../../
+INCFLAGS = -I../../ -I../../Coroutine
 # 源文件目录
-SRCDIRS = . ../../Coroutine
+SRCDIRS = . ../../Coroutine ../../Coroutine/sync
 # 单独的源文件
 ALONE_SOURCES = ../../common/cmdline.cpp
 #======================= 自定义设置部分 结束 =====================#
