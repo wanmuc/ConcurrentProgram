@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
   MyCoroutine::Schedule schedule(5000);                     // 协程池初始化
   MyCoroutine::Channel<EventData> channel(schedule, 3000);  // channel初始化，分配3000的缓存
   for (int i = 0; i < 3000; i++) {
-    int cid = schedule.CoroutineCreate(Consumer, std::ref(schedule), std::ref(channel));
+    int cid = schedule.CoroutineCreate(Consumer, ref(schedule), ref(channel));
     schedule.CoroutineResume(cid);
   }
 
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
         continue;
       }
       if (event_data->cid == MyCoroutine::kInvalidCid) {  // 第一次事件，则创建协程
-        event_data->cid = schedule.CoroutineCreate(Producer, std::ref(channel), event_data);  // 创建协程
+        event_data->cid = schedule.CoroutineCreate(Producer, ref(channel), event_data);  // 创建协程
         schedule.CoroutineResume(event_data->cid);
       } else {
         schedule.CoroutineResume(event_data->cid);  // 唤醒之前主动让出cpu的协程

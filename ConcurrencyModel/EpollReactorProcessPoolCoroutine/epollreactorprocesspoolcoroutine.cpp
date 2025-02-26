@@ -115,7 +115,7 @@ int handler(string ip, int64_t port) {
         continue;
       }
       if (event_data->cid == MyCoroutine::kInvalidCid) {                        // 第一次事件，则创建协程
-        event_data->cid = schedule.CoroutineCreate(handlerClient, event_data);  // 创建协程
+        event_data->cid = schedule.CoroutineCreate(handlerClient, ref(schedule), event_data);  // 创建协程
         schedule.CoroutineResume(event_data->cid);
       } else {
         schedule.CoroutineResume(event_data->cid);  // 唤醒之前主动让出cpu的协程

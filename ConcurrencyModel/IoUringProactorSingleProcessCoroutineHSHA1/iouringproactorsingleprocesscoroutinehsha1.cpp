@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
           int client_fd = cqe->res;
           IoURing::Request *client_request = IoURing::NewRequest(client_fd, IoURing::READ);
           // 新的客户端连接，则创建协程
-          client_request->cid = schedule.CoroutineCreate(Producer, std::ref(channel), client_request);
+          client_request->cid = schedule.CoroutineCreate(Producer, ref(channel), client_request);
           schedule.CoroutineResume(client_request->cid);
         }
         // 继续等待新的客户端连接

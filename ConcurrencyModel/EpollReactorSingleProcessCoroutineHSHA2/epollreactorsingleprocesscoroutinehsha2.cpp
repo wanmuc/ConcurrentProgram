@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
   list<EventData *> event_data_queue;
 
   for (int i = 0; i < 3000; i++) {
-    int cid = schedule.CoroutineCreate(Consumer, std::ref(schedule), std::ref(cond), std::ref(event_data_queue));
+    int cid = schedule.CoroutineCreate(Consumer, ref(schedule), ref(cond), ref(event_data_queue));
     schedule.CoroutineResume(cid);
   }
 
@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
       }
       if (event_data->cid == MyCoroutine::kInvalidCid) {  // 第一次事件，则创建协程
         event_data->cid =
-            schedule.CoroutineCreate(Producer, std::ref(cond), std::ref(event_data_queue), event_data);  // 创建协程
+            schedule.CoroutineCreate(Producer, ref(cond), ref(event_data_queue), event_data);  // 创建协程
         schedule.CoroutineResume(event_data->cid);
       } else {
         schedule.CoroutineResume(event_data->cid);  // 唤醒之前主动让出cpu的协程
