@@ -10,7 +10,7 @@
 
 #include <iostream>
 
-#include "Coroutine/conditionvariable.h"
+#include "Coroutine/sync/conditionvariable.h"
 #include "Coroutine/mycoroutine.h"
 #include "common/cmdline.h"
 #include "common/epollctl.hpp"

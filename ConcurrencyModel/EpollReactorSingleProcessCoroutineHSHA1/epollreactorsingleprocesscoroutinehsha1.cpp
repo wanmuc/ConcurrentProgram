@@ -10,7 +10,7 @@
 
 #include <iostream>
 
-#include "Coroutine/channel.h"
+#include "Coroutine/sync/channel.h"
 #include "Coroutine/mycoroutine.h"
 #include "common/cmdline.h"
 #include "common/epollctl.hpp"
