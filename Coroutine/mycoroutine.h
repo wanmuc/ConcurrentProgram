@@ -30,6 +30,7 @@ class Schedule {
     CoroutineInit(routine, entry);
     return cid;
   }
+  int32_t CurrentCid() { return slave_cid_; }
 
   void Run();                         // 协程调度执行
   void CoroutineYield();              // 从协程让出cpu执行权
